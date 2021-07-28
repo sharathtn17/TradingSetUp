@@ -38,7 +38,7 @@ print(input)
 # Give the location of the file
 # Workbook() takes one, non-optional, argument 
 # which is the filename that we want to create.
-workbook = xlsxwriter.Workbook(input+'.xlsx')
+workbook = xlsxwriter.Workbook('report/'+input+'.xlsx')
 sheet1 = workbook.add_worksheet(input)
 # add_sheet is used to create sheet.
 
