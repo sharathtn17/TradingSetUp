@@ -1,0 +1,2 @@
+# TradingSetUp
+Trading scripts
