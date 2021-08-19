@@ -1,11 +1,15 @@
 import requests
 import openpyxl
+import re
 import time
 from pathlib import Path
 from datetime import date
 import calendar
 import smtplib
 import random
+import json
+import nsetools
+from nsetools import Nse
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -16,13 +20,16 @@ from email.mime.text import MIMEText
 today = date.today()
 print(calendar.day_name[today.weekday()])
 # dd/mm/YY
-
+nse = Nse()
 d1 = today.strftime("%Y-%m-%d")
 print("d1 =", d1)
 
+xlsx_file = Path('', 'Stockdz.xlsx')
+wb_obj = openpyxl.load_workbook(xlsx_file) 
+sheet = wb_obj.active
 
-def triggerMail(daylow,dz1,stock1,cmp1,method1):
-      mail_content = stock1+' Reached Demand Zone \n'+ "Day's Low: "+str(daylow)+"\n"+"Demand Zone: "+str(dz1)+"\n"+"CMP "+str(cmp1)+"\n"+"Method: "+str(method1)
+def triggerMail(mData,sub):
+      mail_content = json.dumps(mData)
       #The mail addresses and password
       sender_address = 'sharathoffical73@gmail.com'
       sender_pass = 'PRU$ha2021'
@@ -33,7 +40,7 @@ def triggerMail(daylow,dz1,stock1,cmp1,method1):
       message = MIMEMultipart()
       message['From'] = "sharathoffical73@gmail.com"
       message['To'] = rec
-      message['Subject'] = 'Watch:'+str(stock1)+ ' Touched Demand Zone'   #The subject line
+      message['Subject'] = sub   #The subject line
       #The body and the attachments for the mail
       message.attach(MIMEText(mail_content, 'plain'))
       #Create SMTP session for sending the mail
@@ -62,79 +69,119 @@ def triggerMail(daylow,dz1,stock1,cmp1,method1):
       session.sendmail(sender_address, rec_list, text)
       session.quit()
       print('Mail Sent')
+  
 
-
-def execute(stock,dz,method,id):
-    n = random.randint(0,22)
-    print(n)
-    apikey2="1YRMPHAGY0KFMGWE"
-    apikey1="PQXOVVU3GNFV8DJ7"
-    if((n%2)==0):
-       url="https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol="+str(id)+".BSE&outputsize=full&apikey="+apikey1
-       
-    else:
-       url="https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol="+str(id)+".BSE&outputsize=full&apikey="+apikey2
-       
-    print(url)
-    result=requests.get(url).json()
+def execute(sData,row,Msub):
+    #Printing Stock
+    print(sData[0])
+    
+    #Getting quote of specific stock from nsetools 
+    quote = nse.get_quote(str(sData[0]))
+    #Converting quote to string to replace ' single quote to double quote to make it json compatible or to convert to json
+    quoteToString=str(quote)
+   
+    #replace single to double quote using reexp
+    quoteToString=re.sub("'","\"",quoteToString)
+    #replace None to double quote blank using reexp
+    quoteToString=re.sub("None","\" \"",quoteToString)
+    #replace False to double quote "FALSE" using reexp
+    quoteToString=re.sub("False","\"FALSE\"",quoteToString)
+    #print(quoteToString)
+    #f = open('Stockdata.json',)
+  
+    #Converting string to Json format
+    resultJson=json.loads(quoteToString)
+    
     time.sleep(2)
-    daysLow=result.get('Time Series (Daily)').get('2021-08-13').get('3. low')
-    cmp=result.get('Time Series (Daily)').get('2021-08-13').get('4. close')
-    print("Stock:"+str(stock)+" DZ:"+str(dz)+" day'sLow:"+str(daysLow)+" CMPBSE:"+str(cmp))
-    intdz=float(dz)
+   
+    #Get ALL elements in json
+    daysLow=resultJson.get('dayLow')
+    cmp=resultJson.get('closePrice')
+    pricebandLower=resultJson.get('pricebandlower')
+    pricebandUpper=resultJson.get('pricebandupper')
+    avgPrice=resultJson.get('averagePrice')
+    
+    
+    stockData={}
+    stockData["Stock"]=sData[0]
+    stockData["DemandZone"]=sData[2]
+    stockData["Days Low"]=daysLow
+    stockData["CMP"]=cmp
+    stockData["pricebandLower"]=pricebandLower
+    stockData["pricebandupper"]=pricebandUpper
+    stockData["averagePrice"]=avgPrice
+    stockData["Method"]=sData[3]
+    sheet["H"+str(row)]=str(cmp)
+    
+    print("Stock:"+str(sData[0])+" DZ:"+str(sData[2])+" day'sLow:"+str(daysLow)+" CMP:"+str(cmp))
+    intdz=float(sData[2])
     if(float(daysLow)<=intdz):
      print("DZ EQUAL TO CMP")
-     triggerMail(daysLow,dz,stock,cmp,method)
+     triggerMail(stockData,Msub)
+     sheet["I"+str(row)]="Yes"
+     
     time.sleep(2) 
 
-xlsx_file = Path('', 'Stockdz.xlsx')
-wb_obj = openpyxl.load_workbook(xlsx_file) 
-sheet = wb_obj.active
+
 e_list=[]
 i=2
-stock="null"
-BseID="null"
-dz="null"
-method="null"
-
 
 for row in sheet.iter_rows(max_row=sheet.max_row-1):
     #for cell in row:
-       stock=sheet.cell(row=i, column=1).value
-       BseID=sheet.cell(row=i, column=2).value
-       dz=sheet.cell(row=i, column=3).value
-       method=sheet.cell(row=i, column=7).value
+       dzData=[]
+       dzData.append(sheet.cell(row=i, column=1).value)
+       dzData.append(sheet.cell(row=i, column=2).value)
+       dzData.append(sheet.cell(row=i, column=3).value)
+       dzData.append(sheet.cell(row=i, column=7).value)
        time.sleep(3)
-       
-       
        try:
-          execute(stock,dz,method,BseID)
+        Msub="WacthOut :"+str(sheet.cell(row=i, column=1).value)+" has reached Demand Zone"
+        execute(dzData,i,Msub)
        except Exception as e:
-              print(e)
-              time.sleep(3)
-              print("###Exception####")
-            #  url1="https://www.alphavantage.co/query?function=TIME_SERIES_DAILY_ADJUSTED&symbol="+str(stock)+".BSE&outputsize=full&apikey=PQXOVVU3GNFV8DJ7"
-             # print(url1)
-              
-              try:
-                  execute(stock,dz,method,stock)
-              except Exception:
-                     print(stock+" ***** "+str(BseID))
-                     tempList=[]
-                     tempList.append(stock)
-                     tempList.append(BseID)
-                     tempList.append(dz)
-                     tempList.append(method)
-                     e_list.append(tempList)
-                     print(e_list)
-                     
-                     pass
-       pass
-       
-      
-       i+=1
+           print(e)
+           pass
 
-print(e_list)
+       i+=1
+ 
+wb_obj.save("Stockdz.xlsx")
+wb_obj.close()
+time.sleep(3)
+xlsx_file = Path('', 'Stockdz.xlsx')
+wb_obj1 = openpyxl.load_workbook(xlsx_file) 
+sheet2 = wb_obj1.active
+
+k=2
+for row in sheet2.iter_rows(max_row=sheet2.max_row-1):
+    #for cell in row:
+       upsideData={}
+       upsideData["Stock"]=sheet2.cell(row=k, column=1).value
+       upsideData["DZ"]=sheet2.cell(row=k, column=3).value
+       upsideData["CMP"]=sheet2.cell(row=k, column=8).value
+       upsideData["TouchedDZ"]=sheet2.cell(row=k, column=9).value
+       print("#####Upside#######")
+       print(str(upsideData["DZ"]))
+       print(str(upsideData["CMP"]))  
+       print(str(upsideData["TouchedDZ"]))  
+    
+       if(str(upsideData["TouchedDZ"])=="Yes"):
+         up=(float(upsideData["CMP"])-float(upsideData["DZ"]))
+         print(str(up))
+         down=float(upsideData["DZ"])
+         p1=up/down
+         print(p1)
+         percentage=p1*100
+         print(percentage)
+         if(percentage >=3):
+            upsideData["PercentageUP: "]=round(percentage)
+            Msub='WacthOut :'+str(upsideData["Stock"])+": Moving more than 3 percentage from Demand Zone"
+            triggerMail(upsideData,Msub)
+            print("#####HURRAY#######"+str(percentage))
+           
+       
+
+       k+=1
+
+
 j=0
 for item in e_list:
     try:
