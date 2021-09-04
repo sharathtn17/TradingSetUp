@@ -239,7 +239,7 @@ for row in sheet2.iter_rows(max_row=sheet2.max_row-1):
          if(percentage >=3):
             upsideData["PercentageUP: "]=round(percentage)
             Msub='Alert :'+str(upsideData["Stock"])+": Moving more than 3 percentage from Demand Zone"
-            triggerMail(upsideData,Msub)
+            #triggerMail(upsideData,Msub)
             print("#####HURRAY#######"+str(percentage))
            
        
